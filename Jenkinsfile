@@ -71,14 +71,14 @@ def pushToCollector(){
   print("Inside pushToCollector...........")
     def job_name = "$env.JOB_NAME"
     def job_base_name = "$env.JOB_BASE_NAME"
-    String generalProperties = parseJsonString(env.JENKINS_METADATA,'general')
-    generalPresent = parseJsonArray(generalProperties)
-    if(generalPresent.tenant != '' &&
-    generalPresent.lazsaDomainUri != ''){
+    String metaDataProperties = parseJsonString(env.JENKINS_METADATA,'general')
+    metadataVars = parseJsonArray(metaDataProperties)
+    if(metadataVars.tenant != '' &&
+    metadataVars.lazsaDomainUri != ''){
       echo "Job folder - $job_name"
       echo "Pipeline Name - $job_base_name"
       echo "Build Number - $currentBuild.number"
-      sh """curl -k -X POST '${generalPresent.lazsaDomainUri}/collector/orchestrator/devops/details' -H 'X-TenantID: ${generalPresent.tenant}' -H 'Content-Type: application/json' -d '{\"jobName\" : \"${job_base_name}\", \"projectPath\" : \"${job_name}\", \"agentId\" : \"${generalPresent.agentId}\", \"devopsConfigId\" : \"${generalPresent.devopsSettingId}\", \"agentApiKey\" : \"${generalPresent.agentApiKey}\", \"buildNumber\" : \"${currentBuild.number}\" }' """
+      sh """curl -k -X POST '${metadataVars.lazsaDomainUri}/collector/orchestrator/devops/details' -H 'X-TenantID: ${metadataVars.tenant}' -H 'Content-Type: application/json' -d '{\"jobName\" : \"${job_base_name}\", \"projectPath\" : \"${job_name}\", \"agentId\" : \"${metadataVars.agentId}\", \"devopsConfigId\" : \"${metadataVars.devopsSettingId}\", \"agentApiKey\" : \"${metadataVars.agentApiKey}\", \"buildNumber\" : \"${currentBuild.number}\" }' """
     }
 }
 
@@ -97,7 +97,7 @@ def agentLabel = "${env.JENKINS_AGENT == null ? "":env.JENKINS_AGENT}"
 pipeline {
   agent any
   environment {
-    DEFAULT_STAGE_SEQ = "'Initialization','Build','UnitTests','SonarQubeScan','BuildContainerImage','QualysScan','Rapid7Scan','SysdigScan','PublishContainerImage','Deploy','Destroy'"
+    DEFAULT_STAGE_SEQ = "'Initialization','Build','UnitTests','SonarQubeScan','BuildContainerImage','ContainerImageScan','Rapid7Scan','SysdigScan','PublishContainerImage','Deploy','Destroy'"
     CUSTOM_STAGE_SEQ = "${DYNAMIC_JENKINS_STAGE_SEQUENCE}"
     PROJECT_TEMPLATE_ACTIVE = "${DYNAMIC_JENKINS_STAGE_NEEDED}"
     LIST = "${env.PROJECT_TEMPLATE_ACTIVE == 'true' ? env.CUSTOM_STAGE_SEQ : env.DEFAULT_STAGE_SEQ}"
@@ -133,12 +133,20 @@ pipeline {
           print(list)
 
             // For Context Path read
-            String generalProperties = parseJsonString(env.JENKINS_METADATA,'general')
-            generalPresent = parseJsonArray(generalProperties)
-            if(generalPresent.repoName == ''){
-                generalPresent.repoName = env.RELEASE_NAME
+            String metaDataProperties = parseJsonString(env.JENKINS_METADATA,'general')
+            metadataVars = parseJsonArray(metaDataProperties)
+            if(metadataVars.repoName == ''){
+                metadataVars.repoName = env.RELEASE_NAME
             }
-            env.CONTEXT = generalPresent.contextPath
+            env.CONTEXT = metadataVars.contextPath
+            env.CONTAINERSCANTYPE = metadataVars.containerScanType
+            env.TESTCASEREPOSITORYURL = metadataVars.testcaseRepositoryUrl
+            env.TESTCASEREPOSITORYBRANCH = metadataVars.testcaseRepositoryBranch
+            env.SOURCECODECREDENTIALID = metadataVars.sourceCodeCredentialId
+            env.TESTCASECOMMAND = metadataVars.testcaseCommand
+            env.TESTINGTOOLTYPE = metadataVars.testingToolType
+            env.BROWSERTYPE = metadataVars.browserType
+            def containerScanType = metadataVars.containerScanType
 
               if (env.DEPLOYMENT_TYPE == 'KUBERNETES' || env.DEPLOYMENT_TYPE == 'OPENSHIFT') {
                 String kubeProperties = parseJsonString(env.JENKINS_METADATA,'kubernetes')
@@ -217,22 +225,50 @@ pipeline {
             } else if ("${list[i]}" == "'SonarQubeScan'" && env.ACTION == 'DEPLOY' && stage_flag['sonarScan']) {
               stage('SonarQube Scan') {
                 // stage details here
-                def sonar_org = "${generalPresent.sonarOrg}";
-                def sonar_project_key = "${generalPresent.sonarProjectKey}";
+                def sonar_org = "${metadataVars.sonarOrg}";
+                def sonar_project_key = "${metadataVars.sonarProjectKey}";
 
 
                     if (env.SONAR_CREDENTIAL_ID != null && env.SONAR_CREDENTIAL_ID != '') {
                          withCredentials([usernamePassword(credentialsId: "$SONAR_CREDENTIAL_ID", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                            sh """docker run -v "$WORKSPACE":/app -w /app sonarsource/sonar-scanner-cli:11.0 -Dsonar.java.binaries='.' -Dsonar.exclusions='pom.xml, target/**/*' -Dsonar.projectKey="${sonar_project_key}" -Dsonar.projectName="${sonar_project_key}" -Dsonar.host.url="${generalPresent.sonarHost}" -Dsonar.organization="${generalPresent.sonarOrg}" -Dsonar.sources=src -Dsonar.login=$PASSWORD"""
+                            sh """docker run -v "$WORKSPACE":/app -w /app sonarsource/sonar-scanner-cli:11.0 -Dsonar.java.binaries='.' -Dsonar.exclusions='pom.xml, target/**/*' -Dsonar.projectKey="${sonar_project_key}" -Dsonar.projectName="${sonar_project_key}" -Dsonar.sources=src -Dsonar.host.url="${metadataVars.sonarHost}" -Dsonar.organization="${metadataVars.sonarOrg}" -Dsonar.login=$PASSWORD"""
                           }
                     }
                     else{
                         withSonarQubeEnv('pg-sonar') {
-                            sh """docker run -v "$WORKSPACE":/app -w /app sonarsource/sonar-scanner-cli:11.0 -Dsonar.java.binaries='.' -Dsonar.exclusions='pom.xml, target/**/*' -Dsonar.projectKey="${sonar_project_key}" -Dsonar.projectName="${sonar_project_key}" -Dsonar.organization="${generalPresent.sonarOrg}" -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.sources=src -Dsonar.login=$SONAR_AUTH_TOKEN """
+                            sh """docker run -v "$WORKSPACE":/app -w /app sonarsource/sonar-scanner-cli:11.0 -Dsonar.java.binaries='.' -Dsonar.exclusions='pom.xml, target/**/*' -Dsonar.projectKey="${sonar_project_key}" -Dsonar.projectName="${sonar_project_key}" -Dsonar.sources=src -Dsonar.organization="${metadataVars.sonarOrg}" -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.login=$SONAR_AUTH_TOKEN """
                             }
                     } 
               }
-            } else if ("${list[i]}" == "'Build'" && env.ACTION == 'DEPLOY') {
+            }
+             else if ("${list[i]}" == "'ContainerImageScan'" && stage_flag['containerScan']) {
+                 stage("Container Image Scan") {
+                     if (env.CONTAINERSCANTYPE == 'XRAY') {
+                         jf 'docker scan $REGISTRY_URL:$BUILD_TAG'
+                     }
+                     if(env.CONTAINERSCANTYPE == 'QUALYS'){
+                          getImageVulnsFromQualys credentialsId: "${metadataVars.qualysCredentialId}", imageIds: env.REGISTRY_URL+":"+env.BUILD_TAG, pollingInterval: '30', useLocalConfig: true, apiServer: "${metadataVars.qualysServerURL}", platform: 'PCP', vulnsTimeout: '600'
+                     }
+                     if(env.CONTAINERSCANTYPE == 'RAPID7'){
+                         assessContainerImage failOnPluginError: true,
+                                     imageId: env.REGISTRY_URL+":"+env.BUILD_TAG,
+                                     thresholdRules: [
+                                             exploitableVulnerabilities(action: 'Mark Unstable', threshold: '1'),
+                                             criticalVulnerabilities(action: 'Fail', threshold: '1')
+                                     ],
+                                     nameRules: [
+                                             vulnerablePackageName(action: 'Fail', contains: 'nginx')
+                                     ]
+                     }
+                     if(env.CONTAINERSCANTYPE == 'SYSDIG'){
+                        sh 'echo  $REGISTRY_URL:$BUILD_TAG > sysdig_secure_images'
+                             sysdig inlineScanning: true, bailOnFail: true, bailOnPluginFail: true, name: 'sysdig_secure_images'
+                     }
+
+                 }
+
+            }
+             else if ("${list[i]}" == "'Build'" && env.ACTION == 'DEPLOY') {
               stage('Build') {
                 // stage details here
                 echo "echoed BUILD_TAG--- $BUILD_TAG"
@@ -246,18 +282,18 @@ pipeline {
                            // stage details here
                            echo "echoed BUILD_TAG--- $BUILD_TAG"
                            //Uncomment this block and modify as per your need if you want to use custom base image in Dockerfile from private repository
-                           /*
-                           withCredentials([usernamePassword(credentialsId: "$ARTIFACTORY_CREDENTIALS", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                              if (env.ARTIFACTORY == 'ECR') {
-                                  sh 'set +x; AWS_ACCESS_KEY_ID=$USERNAME AWS_SECRET_ACCESS_KEY=$PASSWORD aws ecr get-login-password --region "$ECR_REGION" | docker login --username AWS --password-stdin $REGISTRY_URL ;set -x'
-                              }
-                              if (env.ARTIFACTORY == 'JFROG') {
-                                  sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$REGISTRY_URL"'
-                              }
-                              if (env.ARTIFACTORY == 'ACR') {
-                                  sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$ACR_LOGIN_URL"'
-                              }
-                           } */
+                          /*
+                          withCredentials([usernamePassword(credentialsId: "$ARTIFACTORY_CREDENTIALS", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                             if (env.ARTIFACTORY == 'ECR') {
+                                 sh 'set +x; AWS_ACCESS_KEY_ID=$USERNAME AWS_SECRET_ACCESS_KEY=$PASSWORD aws ecr get-login-password --region "$ECR_REGION" | docker login --username AWS --password-stdin $REGISTRY_URL ;set -x'
+                             }
+                             if (env.ARTIFACTORY == 'JFROG') {
+                                 sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$REGISTRY_URL"'
+                             }
+                             if (env.ARTIFACTORY == 'ACR') {
+                                 sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$ACR_LOGIN_URL"'
+                             }
+                          } */
                            sh 'docker build -t "$REGISTRY_URL:$BUILD_TAG" -t "$REGISTRY_URL:latest" .'
                        }
             }else if ("${list[i]}" == "'PublishContainerImage'" && (env.ACTION == 'DEPLOY' || env.ACTION == 'PROMOTE')) {
@@ -270,10 +306,10 @@ pipeline {
                                    sh 'set +x; AWS_ACCESS_KEY_ID=$USERNAME AWS_SECRET_ACCESS_KEY=$PASSWORD aws ecr get-login-password --region "$ECR_REGION" | docker login --username AWS --password-stdin $REGISTRY_URL ;set -x'
                                }
                                if (env.ARTIFACTORY == 'JFROG') {
-                                   sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$REGISTRY_URL"'
+                                   sh 'docker login -u "$USERNAME" -p "$PASSWORD" "$REGISTRY_URL"'
                                }
                                if (env.ARTIFACTORY == 'ACR') {
-                                   sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$ACR_LOGIN_URL"'
+                                   sh 'docker login -u "$USERNAME" -p "$PASSWORD" "$ACR_LOGIN_URL"'
                                }
                            }
                               if (env.ACTION == 'DEPLOY') {
@@ -283,64 +319,43 @@ pipeline {
 
                               if (env.ACTION == 'PROMOTE') {
                                   echo "------------------------------ inside promote condition -------------------------------"
-                                  def registry_url_string = "${generalPresent.promoteSource}"
-                                  withCredentials([usernamePassword(credentialsId: "${generalPresent.promoteSourceArtifactoryCredId}", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                                      if ("${generalPresent.promoteSourceArtifactoryType}" == 'ECR') {
-                                         temp_url = registry_url_string.split(':')
-                                         temp_url2 = temp_url[0]
-                                         url = temp_url2.split('\\.')
-                                         env.PROMOTE_SOURCE_ECR_LOGIN_URL = temp_url[0]
-                                         env.PROMOTE_SOURCE_ECR_REGION = url[3]
-                                         echo "ecr region: $PROMOTE_SOURCE_ECR_REGION"
-                                         sh 'set +x; AWS_ACCESS_KEY_ID=$USERNAME AWS_SECRET_ACCESS_KEY=$PASSWORD aws ecr get-login-password --region "$PROMOTE_SOURCE_ECR_REGION" | docker login --username AWS --password-stdin $PROMOTE_SOURCE_ECR_LOGIN_URL ;set -x'
-                                      }
-                                      if ("${generalPresent.promoteSourceArtifactoryType}" == 'JFROG') {
-                                         temp_url = registry_url_string.split(':')
-                                         env.PROMOTE_SOURCE_ACR_LOGIN_URL = temp_url[0]
-                                         sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$PROMOTE_SOURCE_ACR_LOGIN_URL"'
-                                      }
-                                      if ("${generalPresent.promoteSourceArtifactoryType}" == 'ACR') {
-                                         temp_url = registry_url_string.split(':')
-                                         env.PROMOTE_SOURCE_JFROG_LOGIN_URL = temp_url[0]
-                                         sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$PROMOTE_SOURCE_JFROG_LOGIN_URL"'
-                                      }
-                                  }
-                                  sh """ docker pull "${generalPresent.promoteSource}" """
-                                  sh """ docker image tag "${generalPresent.promoteSource}" "$REGISTRY_URL:${generalPresent.promoteTag}" """
-                                  sh """ docker push "$REGISTRY_URL:${generalPresent.promoteTag}" """
-                                  env.BUILD_TAG = "${generalPresent.promoteTag}"
+                                  def registry_url_string = "${metadataVars.promoteSource}"
+                                    withCredentials([usernamePassword(credentialsId: "${metadataVars.promoteSourceArtifactoryCredId}", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                                        if ("${metadataVars.promoteSourceArtifactoryType}" == 'ECR') {
+                                           temp_url = registry_url_string.split(':')
+                                           temp_url2 = temp_url[0]
+                                           url = temp_url2.split('\\.')
+                                           env.PROMOTE_SOURCE_ECR_LOGIN_URL = temp_url[0]
+                                           env.PROMOTE_SOURCE_ECR_REGION = url[3]
+                                           echo "ecr region: $PROMOTE_SOURCE_ECR_REGION"
+                                           sh 'set +x; AWS_ACCESS_KEY_ID=$USERNAME AWS_SECRET_ACCESS_KEY=$PASSWORD aws ecr get-login-password --region "$PROMOTE_SOURCE_ECR_REGION" | docker login --username AWS --password-stdin $PROMOTE_SOURCE_ECR_LOGIN_URL ;set -x'
+                                        }
+                                        if ("${metadataVars.promoteSourceArtifactoryType}" == 'JFROG') {
+                                           temp_url = registry_url_string.split(':')
+                                           env.PROMOTE_SOURCE_ACR_LOGIN_URL = temp_url[0]
+                                           sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$PROMOTE_SOURCE_ACR_LOGIN_URL"'
+                                        }
+                                        if ("${metadataVars.promoteSourceArtifactoryType}" == 'ACR') {
+                                           temp_url = registry_url_string.split(':')
+                                           env.PROMOTE_SOURCE_JFROG_LOGIN_URL = temp_url[0]
+                                           sh 'docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$PROMOTE_SOURCE_JFROG_LOGIN_URL"'
+                                        }
+                                    }
+                                  sh """ docker pull "${metadataVars.promoteSource}" """
+                                  sh """ docker image tag "${metadataVars.promoteSource}" "$REGISTRY_URL:${metadataVars.promoteTag}" """
+                                  sh """ docker push "$REGISTRY_URL:${metadataVars.promoteTag}" """
+                                  env.BUILD_TAG = "${metadataVars.promoteTag}"
                               }
                         }
               }
-            else if ("${list[i]}" == "'QualysScan'" && env.ACTION == 'DEPLOY' && stage_flag['qualysScan']) {
-              stage('Qualys Scan') {
-                getImageVulnsFromQualys credentialsId: "${generalPresent.qualysCredentialId}", imageIds: env.REGISTRY_URL+":"+env.BUILD_TAG, pollingInterval: '30', useLocalConfig: true, apiServer: "${generalPresent.qualysServerURL}", platform: 'PCP', vulnsTimeout: '600'
-              }
-            } else if ("${list[i]}" == "'Rapid7Scan'" && env.ACTION == 'DEPLOY' && stage_flag['rapid7Scan']) {
-              stage('Rapid7 Scan') {
-                assessContainerImage failOnPluginError: true,
-                        imageId: env.REGISTRY_URL + ":" + env.BUILD_TAG,
-                        thresholdRules: [
-                                exploitableVulnerabilities(action: 'Mark Unstable', threshold: '1'),
-                                criticalVulnerabilities(action: 'Fail', threshold: '1')
-                        ],
-                        nameRules: [
-                                vulnerablePackageName(action: 'Fail', contains: 'nginx')
-                        ]
-              }
-            } else if ("${list[i]}" == "'SysdigScan'" && env.ACTION == 'DEPLOY' && stage_flag['sysdigScan']) {
-              stage('Sysdig Scan') {
-                sh 'echo  $REGISTRY_URL:$BUILD_TAG > sysdig_secure_images'
-                sysdig inlineScanning: true, bailOnFail: true, bailOnPluginFail: true, name: 'sysdig_secure_images'
-              }
-            } else if ("${list[i]}" == "'Deploy'") {
+             else if ("${list[i]}" == "'Deploy'") {
               stage('Deploy') {
                 // stage details here
 
                 if (env.ACTION == 'DEPLOY' || env.ACTION == 'PROMOTE' || env.ACTION == 'ROLLBACK') {
                   if (env.ACTION == 'ROLLBACK') {
                       echo "-------------------------------------- inside rollback condition -------------------------------"
-                      env.BUILD_TAG = "${generalPresent.rollbackTag}"
+                      env.BUILD_TAG = "${metadataVars.rollbackTag}"
 
                   }
 
@@ -350,16 +365,16 @@ pipeline {
                               sh 'set +x; ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "AWS_ACCESS_KEY_ID=$USERNAME AWS_SECRET_ACCESS_KEY=$PASSWORD aws ecr get-login-password --region "$ECR_REGION" | docker login --username AWS --password-stdin $REGISTRY_URL " ;set -x'
                           }
                           if (env.ARTIFACTORY == 'JFROG') {
-                              sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$REGISTRY_URL""'
+                              sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker login -u "$USERNAME" -p "$PASSWORD" "$REGISTRY_URL""'
                           }
                           if (env.ARTIFACTORY == 'ACR') {
-                              sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker login -u "\"$USERNAME\"" -p "\"$PASSWORD\"" "$ACR_LOGIN_URL""'
+                              sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker login -u "$USERNAME" -p "$PASSWORD" "$ACR_LOGIN_URL""'
                           }
                       }
 
                         sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "sleep 5s"'
                         sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker pull "$REGISTRY_URL:$BUILD_TAG""'
-                        sh """ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker stop "${generalPresent.repoName}" || true && docker rm "${generalPresent.repoName}" || true" """
+                        sh """ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker stop "${metadataVars.repoName}" || true && docker rm "${metadataVars.repoName}" || true" """
                             // Read Docker Vault properties
                             String dockerProperties = parseJsonString(env.JENKINS_METADATA,'docker')
                             dockerData = parseJsonArray(dockerProperties)
@@ -397,27 +412,27 @@ pipeline {
                                     //sh 'ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "echo $SECRETS > secrets"'
                                     sh 'rm -rf .secrets'
                                     if (env.DEPLOYMENT_TYPE == 'EC2' && env.CONTEXT == 'null') {
-                                        sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${generalPresent.repoName}"  --env-file docker-env -p ${dockerData.hostPort}:$SERVICE_PORT $REGISTRY_URL:$BUILD_TAG" """
+                                        sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${metadataVars.repoName}"  --env-file docker-env -p ${dockerData.hostPort}:$SERVICE_PORT $REGISTRY_URL:$BUILD_TAG" """
                                     }
                                     else if (env.DEPLOYMENT_TYPE == 'EC2' && env.CONTEXT != 'null') {
-                                        sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${generalPresent.repoName}"  --env-file docker-env   -p ${dockerData.hostPort}:$SERVICE_PORT -e context=$CONTEXT $REGISTRY_URL:$BUILD_TAG" """
+                                        sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${metadataVars.repoName}"  --env-file docker-env   -p ${dockerData.hostPort}:$SERVICE_PORT -e context=$CONTEXT $REGISTRY_URL:$BUILD_TAG" """
                                     }
                                 }
                             }
                             else {
                                 if (env.DEPLOYMENT_TYPE == 'EC2' && env.CONTEXT == 'null') {
-                                                    sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${generalPresent.repoName}" -p ${dockerData.hostPort}:$SERVICE_PORT $REGISTRY_URL:$BUILD_TAG" """
+                                                    sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${metadataVars.repoName}" -p ${dockerData.hostPort}:$SERVICE_PORT $REGISTRY_URL:$BUILD_TAG" """
                                 }
                                 else if (env.DEPLOYMENT_TYPE == 'EC2' && env.CONTEXT != 'null') {
-                                                    sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${generalPresent.repoName}" -p ${dockerData.hostPort}:$SERVICE_PORT -e context=$CONTEXT $REGISTRY_URL:$BUILD_TAG" """
+                                                    sh """ ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker run -d --restart always --name "${metadataVars.repoName}" -p ${dockerData.hostPort}:$SERVICE_PORT -e context=$CONTEXT $REGISTRY_URL:$BUILD_TAG" """
                                 }
                             }
                   }
                   if (env.DEPLOYMENT_TYPE == 'KUBERNETES' || env.DEPLOYMENT_TYPE == 'OPENSHIFT') {
                        withCredentials([file(credentialsId: "$KUBE_SECRET", variable: 'KUBECONFIG'), usernamePassword(credentialsId: "$ARTIFACTORY_CREDENTIALS", usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
                            sh """
-                              sed -i s+#SERVICE_NAME#+"${generalPresent.helmReleaseName}"+g ./helm_chart/values.yaml ./helm_chart/Chart.yaml
-                              docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION create ns "$namespace_name" || true
+                              sed -i s+#SERVICE_NAME#+"${metadataVars.helmReleaseName}"+g ./helm_chart/values.yaml ./helm_chart/Chart.yaml
+                              docker run --rm  -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION create ns "$namespace_name" || true
                            """
                            if (env.DEPLOYMENT_TYPE == 'OPENSHIFT') {
                                sh '''
@@ -429,30 +444,30 @@ pipeline {
                                   else
                                       ACCOUNT='default'
                                   fi
-                                  docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" -v "$WORKSPACE":/apps -w /apps $OC_IMAGE_VERSION oc adm policy add-scc-to-user anyuid -z $ACCOUNT -n "$namespace_name"
+                                  docker run --rm  -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" -v "$WORKSPACE":/apps -w /apps $OC_IMAGE_VERSION oc adm policy add-scc-to-user nonroot -z $ACCOUNT -n "$namespace_name"
                                 '''
                            }
 
-                           env.kube_secret_name_for_registry = "$ARTIFACTORY_CREDENTIALS".toLowerCase()
-                           if (env.ARTIFACTORY == 'JFROG') {
-                               sh '''
-                               docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" delete secret $kube_secret_name_for_registry --ignore-not-found || true
-                               docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" create secret docker-registry $kube_secret_name_for_registry --docker-server="$JFROG_LOGIN_URL" --docker-username="\"$USERNAME\"" --docker-password="\"$PASSWORD\"" || true
-                               '''
-                           }
-                           if (env.ARTIFACTORY == 'ACR') {
-                               sh '''
-                                 docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" delete secret $kube_secret_name_for_registry --ignore-not-found || true
-                                 docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" create secret docker-registry $kube_secret_name_for_registry --docker-server="$ACR_LOGIN_URL" --docker-username="\"$USERNAME\"" --docker-password="\"$PASSWORD\"" || true
-                               '''
-                           }
-                           sh """
-                           ls -lart
-                           echo "context: $CONTEXT" >> Helm.yaml
-                           cat Helm.yaml
-                           sed -i s+#SERVICE_NAME#+"${generalPresent.helmReleaseName}"+g ./helm_chart/values.yaml ./helm_chart/Chart.yaml
-                           docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" -v "$WORKSPACE":/apps -w /apps $HELM_IMAGE_VERSION upgrade --install "${generalPresent.helmReleaseName}" -n "$namespace_name" helm_chart --atomic --timeout 300s --set image.repository="$REGISTRY_URL" --set image.tag="$BUILD_TAG" --set image.registrySecret="$kube_secret_name_for_registry"  --set service.internalport="$SERVICE_PORT" -f Helm.yaml
-                           """
+                          env.kube_secret_name_for_registry = "$ARTIFACTORY_CREDENTIALS".toLowerCase()
+                          if (env.ARTIFACTORY == 'JFROG') {
+                              sh '''
+                                docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" delete secret $kube_secret_name_for_registry --ignore-not-found || true
+                                docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" create secret docker-registry $kube_secret_name_for_registry --docker-server="$JFROG_LOGIN_URL" --docker-username="\"$USERNAME\"" --docker-password="\"$PASSWORD\"" || true
+                              '''
+                          }
+                          if (env.ARTIFACTORY == 'ACR') {
+                              sh '''
+                                docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" delete secret $kube_secret_name_for_registry --ignore-not-found || true
+                                docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" $KUBECTL_IMAGE_VERSION -n "$namespace_name" create secret docker-registry $kube_secret_name_for_registry --docker-server="$ACR_LOGIN_URL" --docker-username="\"$USERNAME\"" --docker-password="\"$PASSWORD\"" || true
+                              '''
+                          }
+                          sh """
+                          ls -lart
+                          echo "context: $CONTEXT" >> Helm.yaml
+                          cat Helm.yaml
+                          sed -i s+#SERVICE_NAME#+"${metadataVars.helmReleaseName}"+g ./helm_chart/values.yaml ./helm_chart/Chart.yaml
+                          docker run --rm  -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" -v "$WORKSPACE":/apps -w /apps $HELM_IMAGE_VERSION upgrade --install "${metadataVars.helmReleaseName}" -n "$namespace_name" helm_chart --atomic --timeout 300s --set image.repository="$REGISTRY_URL" --set image.tag="$BUILD_TAG" --set image.registrySecret="$kube_secret_name_for_registry"  --set service.internalport="$SERVICE_PORT" -f Helm.yaml
+                          """
                     }
                   }
                 }
@@ -461,12 +476,12 @@ pipeline {
               stage('Destroy') {
                 // stage details here
                 if (env.DEPLOYMENT_TYPE == 'EC2') {
-                  sh """ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker stop "${generalPresent.repoName}" || true && docker rm "${generalPresent.repoName}" || true" """
+                  sh """ssh -o "StrictHostKeyChecking=no" ciuser@$DOCKERHOST "docker stop "${metadataVars.repoName}" || true && docker rm "${metadataVars.repoName}" || true" """
                 }
                 if (env.DEPLOYMENT_TYPE == 'KUBERNETES' || env.DEPLOYMENT_TYPE == 'OPENSHIFT') {
                   withCredentials([file(credentialsId: "$KUBE_SECRET", variable: 'KUBECONFIG')]) {
                       sh """
-                      docker run --rm  --user root -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" -v "$WORKSPACE":/apps -w /apps $HELM_IMAGE_VERSION uninstall "${generalPresent.helmReleaseName}" -n "$namespace_name"
+                      docker run --rm  -v "$KUBECONFIG":"$KUBECONFIG" -e KUBECONFIG="$KUBECONFIG" -v "$WORKSPACE":/apps -w /apps $HELM_IMAGE_VERSION uninstall "${metadataVars.helmReleaseName}" -n "$namespace_name"
                       """
                   }
                 }
