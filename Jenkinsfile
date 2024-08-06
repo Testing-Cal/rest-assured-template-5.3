@@ -97,7 +97,7 @@ def agentLabel = "${env.JENKINS_AGENT == null ? "":env.JENKINS_AGENT}"
 pipeline {
   agent any
   environment {
-    DEFAULT_STAGE_SEQ = "'Initialization','Build','UnitTests','SonarQubeScan','BuildContainerImage','ContainerImageScan','Rapid7Scan','SysdigScan','PublishContainerImage','Deploy','Destroy'"
+    DEFAULT_STAGE_SEQ = "'Initialization','Build','UnitTests','SonarQubeScan','BuildContainerImage','ContainerImageScan','PublishContainerImage','Deploy','Destroy'"
     CUSTOM_STAGE_SEQ = "${DYNAMIC_JENKINS_STAGE_SEQUENCE}"
     PROJECT_TEMPLATE_ACTIVE = "${DYNAMIC_JENKINS_STAGE_NEEDED}"
     LIST = "${env.PROJECT_TEMPLATE_ACTIVE == 'true' ? env.CUSTOM_STAGE_SEQ : env.DEFAULT_STAGE_SEQ}"
