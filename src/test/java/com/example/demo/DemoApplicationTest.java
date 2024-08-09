@@ -1,9 +1,8 @@
 package com.example.demo;
 
-import org.junit.runner.RunWith;
-import org.springframework.test.context.junit4.SpringRunner;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
 import static io.restassured.RestAssured.*;
 
@@ -15,12 +14,12 @@ import java.util.ResourceBundle;
 /**
  * Unit test for simple App.
  */
-@RunWith(SpringRunner.class)
+@SpringBootTest
 public class DemoApplicationTest {
 
     ResourceBundle resourceBundle = ResourceBundle.getBundle("application");
 
-    @BeforeClass
+    @BeforeEach
     public void beforeClass() {
         RestAssured.baseURI = "https://ghibliapi.herokuapp.com";
         RestAssured.basePath = "/locations";

@@ -97,7 +97,7 @@ def agentLabel = "${env.JENKINS_AGENT == null ? "":env.JENKINS_AGENT}"
 pipeline {
   agent any
   environment {
-    DEFAULT_STAGE_SEQ = "'Initialization','Build','UnitTests','SonarQubeScan','BuildContainerImage','ContainerImageScan','Rapid7Scan','SysdigScan','PublishContainerImage','Deploy','Destroy'"
+    DEFAULT_STAGE_SEQ = "'Initialization','Build','UnitTests','SonarQubeScan','BuildContainerImage','ContainerImageScan','PublishContainerImage','Deploy','Destroy'"
     CUSTOM_STAGE_SEQ = "${DYNAMIC_JENKINS_STAGE_SEQUENCE}"
     PROJECT_TEMPLATE_ACTIVE = "${DYNAMIC_JENKINS_STAGE_NEEDED}"
     LIST = "${env.PROJECT_TEMPLATE_ACTIVE == 'true' ? env.CUSTOM_STAGE_SEQ : env.DEFAULT_STAGE_SEQ}"
@@ -117,7 +117,7 @@ pipeline {
     STAGE_FLAG = "${STAGE_FLAG}"
     JENKINS_METADATA = "${JENKINS_METADATA}"
 
-    JAVA_MVN_IMAGE_VERSION = "amazoncorretto:8-alpine" //https://hub.docker.com/_/maven/tags
+    JAVA_MVN_IMAGE_VERSION = "amazoncorretto:21-alpine" //https://hub.docker.com/_/maven/tags
     KUBECTL_IMAGE_VERSION = "bitnami/kubectl:1.28" //https://hub.docker.com/r/bitnami/kubectl/tags
     HELM_IMAGE_VERSION = "alpine/helm:3.8.1" //https://hub.docker.com/r/alpine/helm/tags   
     OC_IMAGE_VERSION = "quay.io/openshift/origin-cli:4.9.0" //https://quay.io/repository/openshift/origin-cli?tab=tags

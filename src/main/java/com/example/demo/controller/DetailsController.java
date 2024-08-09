@@ -4,6 +4,7 @@ import com.example.demo.entity.DetailsEntity;
 import com.example.demo.service.DetailsService;
 import com.google.gson.Gson;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +23,12 @@ public class DetailsController {
     @Autowired
     DetailsService detailsService;
 
+    @Value("${spring.application.title}")
+    private String title;
+
     @GetMapping
     public ResponseEntity<String> getDefault() {
-        return new ResponseEntity<String>("Hello, Welcome to Engineering Lab! Start editing to see some magic happen :)", HttpStatus.OK);
+        return new ResponseEntity<String>(title + "Hello, Welcome to Engineering Lab! Start editing to see some magic happen :)", HttpStatus.OK);
     }
 
     @GetMapping(value = "getDetails", produces = {MediaType.APPLICATION_JSON_VALUE})
