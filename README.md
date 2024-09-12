@@ -1,3 +1,2 @@
-# rest-assured-template-1.0
-
-rest-assured-template-1.0
+# REST Assured 5.3.0
+The files in this sample template are provided for guidance purposes only. They should be customized and adapted to meet the specific requirements of your application.
